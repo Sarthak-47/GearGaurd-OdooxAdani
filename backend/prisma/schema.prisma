@@ -1,0 +1,137 @@
+// Prisma Schema for GearGuard Maintenance Management System
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum Role {
+  USER
+  TECHNICIAN
+  MANAGER
+}
+
+enum RequestType {
+  CORRECTIVE   // Breakdown maintenance
+  PREVENTIVE   // Scheduled maintenance
+}
+
+enum Stage {
+  NEW
+  IN_PROGRESS
+  REPAIRED
+  SCRAP
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+/// User model - supports User, Technician, and Manager roles
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?  // URL to avatar image
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Technician belongs to a maintenance team
+  teamId String?
+  team   MaintenanceTeam? @relation(fields: [teamId], references: [id])
+
+  // Requests created by this user
+  createdRequests MaintenanceRequest[] @relation("CreatedBy")
+  
+  // Requests assigned to this technician
+  assignedRequests MaintenanceRequest[] @relation("AssignedTo")
+
+  @@map("users")
+}
+
+/// Equipment/Asset model - the core asset being maintained
+model Equipment {
+  id               String    @id @default(uuid())
+  name             String
+  serialNumber     String    @unique
+  department       String
+  assignedEmployee String?   // Name of employee using this equipment
+  purchaseDate     DateTime
+  warrantyEndDate  DateTime?
+  location         String
+  isScrapped       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Each equipment has a default maintenance team
+  teamId String
+  team   MaintenanceTeam @relation(fields: [teamId], references: [id])
+
+  // Maintenance requests for this equipment
+  requests MaintenanceRequest[]
+
+  @@map("equipment")
+}
+
+/// Maintenance Team model - specialized teams (Mechanics, Electricians, IT Support, etc.)
+model MaintenanceTeam {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Team members (Technicians)
+  members User[]
+
+  // Equipment managed by this team
+  equipment Equipment[]
+
+  // Requests assigned to this team
+  requests MaintenanceRequest[]
+
+  @@map("maintenance_teams")
+}
+
+/// Maintenance Request model - Corrective (Breakdown) or Preventive (Routine)
+model MaintenanceRequest {
+  id            String      @id @default(uuid())
+  subject       String
+  description   String?
+  type          RequestType
+  priority      Int         @default(1) // 1=Low, 2=Medium, 3=High, 4=Critical
+  scheduledDate DateTime?   // For preventive maintenance
+  duration      Float?      // Hours spent on maintenance
+  stage         Stage       @default(NEW)
+  notes         String?     // System notes and logs
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Related equipment (auto-fills maintenance team)
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+
+  // Maintenance team (auto-filled from equipment)
+  teamId String
+  team   MaintenanceTeam @relation(fields: [teamId], references: [id])
+
+  // User who created the request
+  createdById String
+  createdBy   User @relation("CreatedBy", fields: [createdById], references: [id])
+
+  // Technician assigned to this request
+  technicianId String?
+  technician   User?  @relation("AssignedTo", fields: [technicianId], references: [id])
+
+  @@map("maintenance_requests")
+}
